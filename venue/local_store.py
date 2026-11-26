@@ -34,6 +34,13 @@ def initialize_venue_store(db, venue_id):
         db.execute('CREATE INDEX IF NOT EXISTS rehearsals_by_event ON rehearsals(event_id, recorded_at)')
         db.execute('CREATE INDEX IF NOT EXISTS screenings_by_event ON screenings(event_id, started_at)')
 
+        # Compatibility for direct callers of the V1 store initializer: the
+        # switch tables are part of the same bound venue database.
+        from venue.program_store import initialize_program_registry
+        from venue.switch_state import initialize_venue_switch
+        initialize_program_registry(db)
+        initialize_venue_switch(db)
+
 
 def open_venue_store(path, venue_id):
     db = connect(path)

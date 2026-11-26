@@ -9,13 +9,16 @@ from urllib.parse import parse_qsl, urlsplit
 
 from core import BusinessError, connect, moment, transaction
 from desk.html import Reply, VENUE_LABELS, esc, link, page
-from desk import program_pages, report_pages, tour_pages, venue_pages
+from desk import program_pages, report_pages, switch_pages, tour_pages, venue_pages, venue_switch_pages
 from program.draft import initialize_drafts
 from program.edition import initialize_program_editions
 from report.intake import initialize_report_intake
 from report.shift import initialize_shift_reports
 from tour.events import initialize_issues
+from tour.switch_plan import initialize_switch_plans
 from venue.local_store import initialize_venue_store
+from venue.program_store import initialize_program_registry
+from venue.switch_state import initialize_venue_switch
 
 _MAX_BODY = 16 * 1024 * 1024
 _STYLE = Path(__file__).with_name('style.css')
@@ -30,6 +33,26 @@ _CENTRAL = {
     ('GET', '/issue'): tour_pages.issue_page,
     ('POST', '/issue'): tour_pages.submit_issue,
     ('GET', '/opening'): tour_pages.download_opening_packet,
+    ('GET', '/switch'): switch_pages.switch_page,
+    ('GET', '/switch-plan'): switch_pages.switch_page,
+    ('GET', '/switch-plans'): switch_pages.switch_page,
+    ('POST', '/switch'): switch_pages.submit_switch,
+    ('POST', '/switch-plan'): switch_pages.submit_plan,
+    ('POST', '/plans/switch'): switch_pages.submit_plan,
+    ('POST', '/switch/plan'): switch_pages.submit_plan,
+    ('POST', '/switch/credential'): switch_pages.submit_credential,
+    ('POST', '/credential'): switch_pages.submit_credential,
+    ('POST', '/receipt'): switch_pages.submit_credential,
+    ('POST', '/proof'): switch_pages.submit_credential,
+    ('POST', '/retirement-receipt'): switch_pages.submit_credential,
+    ('GET', '/authorization'): switch_pages.download_authorization,
+    ('GET', '/permit'): switch_pages.download_authorization,
+    ('GET', '/switch-authorization'): switch_pages.download_authorization,
+    ('GET', '/authorize'): switch_pages.download_authorization,
+    ('GET', '/switch-program'): switch_pages.download_program_material,
+    ('GET', '/program-material'): switch_pages.download_program_material,
+    ('GET', '/new-program'): switch_pages.download_program_material,
+    ('GET', '/corrected-program'): switch_pages.download_program_material,
     ('GET', '/intake'): report_pages.intake_page,
     ('POST', '/intake'): report_pages.submit_intake,
     ('GET', '/accepted'): report_pages.download_accepted,
@@ -37,16 +60,44 @@ _CENTRAL = {
 }
 _VENUE = {
     ('GET', '/venue'): venue_pages.venue_page,
+    ('GET', '/switch'): venue_pages.venue_page,
     ('POST', '/install'): venue_pages.submit_install,
     ('GET', '/screening'): venue_pages.screening_page,
     ('GET', '/shift'): report_pages.shift_page,
     ('POST', '/seal'): report_pages.submit_seal,
     ('GET', '/sealed'): report_pages.download_report,
+    ('GET', '/retirement'): venue_switch_pages.download_retirement,
+    ('GET', '/retirement-receipt'): venue_switch_pages.download_retirement,
+    ('GET', '/retirement-packet'): venue_switch_pages.download_retirement,
+    ('GET', '/stop-proof'): venue_switch_pages.download_retirement,
 }
 _CLOCKED = {
     ('POST', '/preview'): venue_pages.submit_preview,
     ('POST', '/start'): venue_pages.submit_start,
     ('POST', '/finish'): venue_pages.submit_finish,
+    ('POST', '/retire'): venue_switch_pages.submit_retire,
+    ('POST', '/retirement'): venue_switch_pages.submit_retire,
+    ('POST', '/retire-old'): venue_switch_pages.submit_retire,
+    ('POST', '/stop-old'): venue_switch_pages.submit_retire,
+    ('POST', '/stop'): venue_switch_pages.submit_retire,
+    ('POST', '/stop-edition'): venue_switch_pages.submit_retire,
+    ('POST', '/retire-edition'): venue_switch_pages.submit_retire,
+    ('POST', '/authorization'): venue_switch_pages.submit_authorization,
+    ('POST', '/permit'): venue_switch_pages.submit_authorization,
+    ('POST', '/auth'): venue_switch_pages.submit_authorization,
+    ('POST', '/grant'): venue_switch_pages.submit_authorization,
+    ('POST', '/license'): venue_switch_pages.submit_authorization,
+    ('POST', '/upload-authorization'): venue_switch_pages.submit_authorization,
+    ('POST', '/switch-material'): venue_switch_pages.submit_material,
+    ('POST', '/material'): venue_switch_pages.submit_material,
+    ('POST', '/program-material'): venue_switch_pages.submit_material,
+    ('POST', '/upload-material'): venue_switch_pages.submit_material,
+    ('POST', '/new-program-material'): venue_switch_pages.submit_material,
+    ('POST', '/program-packet'): venue_switch_pages.submit_material,
+    ('POST', '/switch-program'): venue_switch_pages.submit_material,
+    ('POST', '/enable-switch'): venue_switch_pages.submit_enable,
+    ('POST', '/enable'): venue_switch_pages.submit_enable,
+    ('POST', '/activate'): venue_switch_pages.submit_enable,
 }
 
 
@@ -93,9 +144,10 @@ def _home(role):
     if role == 'central':
         entries = [('/draft', '编排节目', '保存分镜、校样和冻结节目'),
                    ('/issue', '展次发行', '设置两馆分额、领取开馆件'),
+                   ('/switch', '校正换版', '登记计划、收凭据并发授权'),
                    ('/intake', '交班核对', '接纳班报并核对两馆开映记录')]
     else:
-        entries = [('/venue', '本馆放映', '安装展次、试映、开映和结束'),
+        entries = [('/venue', '本馆放映', '安装展次、试映、开映、停旧和启用新版'),
                    ('/shift', '本馆班报', '按营业日期和班别封报')]
     cards = [f'<section><h2>{link(path, title)}</h2><p>{esc(description)}</p></section>'
              for path, title, description in entries]
@@ -204,9 +256,12 @@ def create_server(role, db_path, port=0, *, clock=None):
                 initialize_drafts(db)
                 initialize_program_editions(db)
                 initialize_issues(db)
+                initialize_switch_plans(db)
                 initialize_report_intake(db)
         if role != 'central':
             initialize_venue_store(db, role)
+            initialize_program_registry(db)
+            initialize_venue_switch(db)
             initialize_shift_reports(db)
     return _WorkbenchServer(role, db_path, port, clock if clock is not None else moment)
 

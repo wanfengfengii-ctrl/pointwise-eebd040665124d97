@@ -4,6 +4,7 @@ from core import BusinessError, identifier, transaction
 from program.edition import ProgramEdition
 from tour.venue_packet import decode_opening_packet
 from venue.local_store import get_venue_identity
+from venue.program_store import store_venue_program
 
 
 @dataclass(frozen=True)
@@ -24,6 +25,7 @@ def install_packet(db, raw):
     with transaction(db, write=True):
         if packet.venue_id != get_venue_identity(db):
             raise BusinessError('wrong_venue', '开馆件的收件馆与本馆不符。')
+        store_venue_program(db, packet.program)
         row = db.execute('SELECT packet FROM installations WHERE event_id = ?', (packet.event_id,)).fetchone()
         if row is not None:
             if row['packet'] != raw:

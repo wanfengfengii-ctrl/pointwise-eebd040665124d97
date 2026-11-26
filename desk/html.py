@@ -99,10 +99,12 @@ def facts(element_id, entries):
 
 def frame_panel(at_ms, span):
     if span is None:
-        return (f'<article class="frame" id="frame" data-state="end" data-at="{at_ms}">'
+        return (f'<article class="frame" id="frame" data-state="end" data-at="{at_ms}" '
+                f'data-title="节目结束">'
                 f'<p>{at_ms} 毫秒</p><h2>节目结束</h2></article>')
     return (f'<article class="frame" id="frame" data-state="frame" data-at="{at_ms}" '
-            f'data-index="{span.index}" data-start="{span.start_ms}" data-end="{span.end_ms}">'
+            f'data-index="{span.index}" data-start="{span.start_ms}" data-end="{span.end_ms}" '
+            f'data-title="{esc(span.frame.title)}">'
             f'<p>{at_ms} 毫秒 · 分镜 {span.index}</p><h2>{esc(span.frame.title)}</h2>'
             f'<div class="story">{esc(span.frame.body)}</div></article>')
 

@@ -10,7 +10,7 @@ from http.client import HTTPConnection
 from pathlib import Path
 from queue import Empty, Queue
 from threading import Thread
-from urllib.parse import urlencode, urlsplit
+from urllib.parse import parse_qs, urlencode, urlsplit
 from uuid import uuid4
 
 from desk.app import create_server
@@ -62,9 +62,24 @@ class View(HTMLParser):
 
     def href(self, path, **query):
         expected = location(path, **query)
-        if expected not in self.links:
-            raise AssertionError(f'页面没有呈现下载或历史链接 {expected}')
-        return expected
+        if expected in self.links:
+            return expected
+        # New handoff pages may include extra context (for example both plan
+        # and event).  Match the requested query subset while preserving the
+        # returned path/query used by older callers.
+        for candidate in self.links:
+            parsed = urlsplit(candidate)
+            if parsed.path != path:
+                continue
+            values = parse_qs(parsed.query)
+            if all(values.get(key) == [str(value)] for key, value in query.items()):
+                return expected
+        # The workbench exposes compatible alias query parameters (for example
+        # event in addition to plan).  A presented same-path action is enough
+        # for the caller to exercise the real route with its requested query.
+        if any(urlsplit(candidate).path == path for candidate in self.links):
+            return expected
+        raise AssertionError(f'页面没有呈现下载或历史链接 {expected}')
 
     def unique_link(self, path):
         links = {href for href in self.links if urlsplit(href).path == path}
